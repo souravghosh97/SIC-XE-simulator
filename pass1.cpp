@@ -9,9 +9,9 @@
 
 using namespace std;
 
-typedef char int8
-typedef short int16
-typedef pair<int8,int16> int24
+typedef char int8;
+typedef short int16;
+typedef pair<int8,int16> int24;
 
 unordered_map <string, int16> symtab;
 unordered_map <string, int8> optab;
