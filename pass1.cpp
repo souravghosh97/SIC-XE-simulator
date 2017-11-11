@@ -10,9 +10,9 @@
 #define MEMORY_SIZE 32168
 using namespace std;
 
-unordered_map <string,pair<int16,int>> symtab;//symtab pair<address,line No>,. Line no to detect errors in file
-unordered_map <string,int8> optab;
-unordered_map <int8,int8> registertab;
+unordered_map <string,int16> symtab;
+unordered_map <string, int8> optab;
+unordered_map <int8, int8> registertab;
 
 void register_initialize(){
 
@@ -74,8 +74,62 @@ void opcode_initialize(){
 }
 int main(){
 	int8 memory[MEMORY_SIZE];
+	vector<vector<string>> vec(1000);
+	ifstream fin;
+	int16 locattr = 0;
+	istringstream s;
+	string line, word;
+	int lineno = 0, i = 0;
+	bool new_command = false;
+
+	fin.open("input.txt");
+	opcode_initialize();
+
+	while(!fin.eof()){
+		getline(fin, line);
+		s.str(line);
+		new_command = false;
+		//ignore the blank lines
+		while(getline(s, word,' ')){
+			if(word.length() != 0){
+				new_command = true;
+				vec[i].push_back(word);
+			}
+		}
+		if(vec[i][0][0] == '+' && optab.find(vec[i][0].substr(1)) != optab.end())// +jsub extended instruction
+			locattr = locattr + 4;
+		else if(optab.find(vec[i][0]) != optab.end())
+			locattr = locattr + 3;
+		else {
+			if(symtab.find(vec[i][0]) != symtab.end()){
+				cout << "Duplicate at line no. " << lineno << endl;
+				break;
+			}
+			if(vec[i][1] == "WORD"){
+				locattr = locattr + 3;
+				symtab[vec[i][0]] = locattr;
+			}
+			else if(vec[i][1] == "RESW"){
+				symtab[vec[i][0]] = locattr;	
+				locattr = locattr + 3*stoi(vec[i][2]);
+			}
+			else if(vec[i][1] == "RESB"){
+				symtab[vec[i][0]] = locattr;	
+				locattr = locattr + stoi(vec[i][2]);
+			}
+			else if(vec[i][1] == "BYTE"){
+				symtab[vec[i][0]] = locattr;	
+				locattr = locattr + (vec[i][2].length()-3);// EOF BYTE C'EOF'. the C , and two ' are not considetred
+			}
+			else
+				symtab[vec[i][0]] = locattr;// for labels LOOP LDA THREE
+		}
 
 
+		if (new_command)
+			i++;
+		lineno++;
 
-
+	}
+return 0;
 }
