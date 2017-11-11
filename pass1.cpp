@@ -121,15 +121,19 @@ int main(){
 				symtab[vec[i][0]] = locattr;	
 				locattr = locattr + (vec[i][2].length()-3);// EOF BYTE C'EOF'. the C , and two ' are not considetred
 			}
-			else
-				symtab[vec[i][0]] = locattr;// for labels LOOP LDA THREE
+			else{
+				symtab[vec[i][0]] = locattr;
+				if(vec[i][0][1] == '+' && optab.find(vec[i][1].substr(1)) != optab.end())// +jsub extended instruction
+					locattr = locattr + 4;
+				else if(optab.find(vec[i][1]) != optab.end())
+					locattr = locattr + 3;
+				else
+					cout << "invalid symbol at line no. " << lineno << endl;
+			}
 		}
-
-
 		if (new_command)
 			i++;
 		lineno++;
-
 	}
 return 0;
 }
