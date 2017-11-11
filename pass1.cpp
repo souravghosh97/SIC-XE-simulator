@@ -90,13 +90,11 @@ int main() {
 		getline(fin, line);
 		s.str(line);
 		new_command = false;
-		// ignore the blank lines
-		while (getline(s, word, ' ')) {
-			if (word.length() != 0) {
-				new_command = true;
-				vec[i].push_back(word);
-			}
+		while (s >> word) {
+			new_command = true;
+			vec[i].push_back(word);
 		}
+		s.clear();
 		if (vec[i][0][0] == '+' && optab.find(vec[i][0].substr(1)) != optab.end()) // +jsub extended instruction
 			locattr = locattr + 4;
 		else if (optab.find(vec[i][0]) != optab.end())
