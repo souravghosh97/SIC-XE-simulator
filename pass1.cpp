@@ -5,22 +5,27 @@
 #include <unordered_map>
 #include <vector>
 #define int8 char
+#define int16 short
+#define int24 pair <int8,int16>
 #define MEMORY_SIZE 32168
 using namespace std;
 
-unordered_map <string,vector<int8>> symtab;
+unordered_map <string,pair<int16,int>> symtab;//symtab pair<address,line No>,. Line no to detect errors in file
 unordered_map <string,int8> optab;
 unordered_map <int8,int8> registertab;
 
 void register_initialize(){
+
 	registertab['A'] = 0;
     registertab['X'] = 1;
     registertab['L'] = 2;
     registertab['B'] = 3;
     registertab['S'] = 4;
     registertab['T'] = 5;
+
 }
 void opcode_initialize(){
+
 	optab["ADD"] = 0x18;
 	optab["ADDR"] = 0x90;
 	optab["DIV"] = 0x24;
@@ -38,7 +43,6 @@ void opcode_initialize(){
 	optab["JLT"] = 0x38;
 	optab["J"] = 0x3C;
 
-
 	optab["LDA"] = 0x00;
 	optab["LDB"] = 0x68;
 	optab["LDL"] = 0x08;
@@ -46,7 +50,7 @@ void opcode_initialize(){
 	optab["LDT"] = 0x74;
 	optab["LDX"] = 0x04;
 	optab["LDCH"] = 0x50;
-	
+
 	optab["STA"] = 0x0C;
 	optab["STB"] = 0x78;
 	optab["STL"] = 0x14;
@@ -69,7 +73,7 @@ void opcode_initialize(){
 
 }
 int main(){
-	int8 memory[MEMORY_SIZE][3];
+	int8 memory[MEMORY_SIZE];
 
 
 
