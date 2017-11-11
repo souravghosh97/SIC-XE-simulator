@@ -89,12 +89,15 @@ int main() {
 	while (!fin.eof()) {
 		getline(fin, line);
 		s.str(line);
-		new_command = false;
 		while (s >> word) {
-			new_command = true;
 			vec[i].push_back(word);
 		}
 		s.clear();
+		if (vec[i].size() < 3) {
+			i++;
+			lineno++;
+			continue;
+		}
 		if (vec[i][0][0] == '+' && optab.find(vec[i][0].substr(1)) != optab.end()) // +jsub extended instruction
 			locattr = locattr + 4;
 		else if (optab.find(vec[i][0]) != optab.end())
@@ -105,33 +108,48 @@ int main() {
 				break;
 			}
 			if (vec[i][1] == "WORD") {
-				locattr = locattr + 3;
 				symtab[vec[i][0]] = locattr;
-			}
-			else if (vec[i][1] == "RESW") {
+				locattr = locattr + 3;
+			} else if (vec[i][1] == "RESW") {
 				symtab[vec[i][0]] = locattr;
 				locattr = locattr + 3*stoi(vec[i][2]);
-			}
-			else if (vec[i][1] == "RESB") {
+			} else if (vec[i][1] == "RESB") {
 				symtab[vec[i][0]] = locattr;
 				locattr = locattr + stoi(vec[i][2]);
-			}
-			else if (vec[i][1] == "BYTE") {
+			} else if (vec[i][1] == "BYTE") {
 				symtab[vec[i][0]] = locattr;
-				locattr = locattr + (vec[i][2].length()-3); // EOF BYTE C'EOF'. the C , and two ' are not considetred
-			}
-			else {
+				if (vec[i][2][0] == 'C' && vec[i][2][1] == '\'') {
+					if(vec[i][2].length() == 6) {
+						if (vec[i][2] == "C\'EOF\'")
+							++locattr;
+						else {
+							locattr += 3;
+						}
+					} else {
+						locattr += (vec[i][2].length()-3);
+					}
+				} else if (vec[i][2][0] == 'X' && vec[i][2][1] == '\'') {
+					if (vec[i][2].length() > 5) {
+						cout << "Invalid value at line no. " << lineno << endl;
+						break;
+					} else if (vec[i][2][4] == '\'') {
+						++locattr;
+					} else {
+						cout << "Invalid value at line no. " << lineno+1 << endl;
+						break;
+					}
+				}
+			} else {
 				symtab[vec[i][0]] = locattr;
 				if (vec[i][0][1] == '+' && optab.find(vec[i][1].substr(1)) != optab.end()) // +jsub extended instruction
-					locattr = locattr + 4;
+					locattr += 4;
 				else if (optab.find(vec[i][1]) != optab.end())
-					locattr = locattr + 3;
+					locattr += 3;
 				else
-					cout << "Invalid symbol at line no. " << lineno << endl;
+					cout << "Invalid symbol at line no. " << lineno+1 << endl;
 			}
 		}
-		if (new_command)
-			i++;
+		i++;
 		lineno++;
 	}
 	return 0;
