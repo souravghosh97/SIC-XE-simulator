@@ -68,7 +68,7 @@ instruction calculate_objectcode(vector<string> vec, int lineno){
 			}
 		} else if (optab.find(vec[i]) != optab.end()){
 			if(optab[vec[i]].format == 3){
-				result.opcode = optab[vec[i]].opcode & 0xFC;
+				result.opcode = (optab[vec[i]].opcode & 0xFC);
 				result.format = optab[vec[i]].format;
 			}
 			else
@@ -136,34 +136,34 @@ void register_initialize() {
 }
 
 void opcode_initialize() {
-	optab["ADD"].opcode 		= 0x18;
-	optab["ADD"].format 		= 3;
-	optab["ADDR"].opcode 		= 0x90;
-	optab["ADDR"].format 		= 2;
+	optab["ADD"].opcode 	= 0x18;
+	optab["ADD"].format 	= 3;
+	optab["ADDR"].opcode 	= 0x90;
+	optab["ADDR"].format 	= 2;
 	optab["DIV"].opcode		= 0x24;
-	optab["DIV"].format 		= 3;
-	optab["DIVR"].opcode		= 0x9C;
-	optab["DIVR"].format 		= 2;
+	optab["DIV"].format 	= 3;
+	optab["DIVR"].opcode	= 0x9C;
+	optab["DIVR"].format 	= 2;
 	optab["SUB"].opcode		= 0x1C;
 	optab["SUB"].format		= 3;
-	optab["SUBR"].opcode		= 0x5C;
-	optab["SUBR"].format		= 2;
+	optab["SUBR"].opcode	= 0x5C;
+	optab["SUBR"].format	= 2;
 	optab["MUL"].opcode		= 0x20;
 	optab["MUL"].format		= 3;
-	optab["MULR"].opcode		= 0x98;
-	optab["MULR"].format		= 2;
+	optab["MULR"].opcode	= 0x98;
+	optab["MULR"].format	= 2;
 
-	optab["COMP"].opcode		= 0x28;
-	optab["COMP"].format		= 3;
-	optab["COMPR"].opcode		= 0xA0;
-	optab["COMPR"].format		= 2;
+	optab["COMP"].opcode	= 0x28;
+	optab["COMP"].format	= 3;
+	optab["COMPR"].opcode	= 0xA0;
+	optab["COMPR"].format	= 2;
 
 	optab["JEQ"].opcode		= 0x30;
-	optab["JEQ"].format 		= 3;
+	optab["JEQ"].format 	= 3;
 	optab["JGT"].opcode		= 0x34;
-	optab["JGT"].format 		= 3;
+	optab["JGT"].format 	= 3;
 	optab["JLT"].opcode		= 0x38;
-	optab["JLT"].format 		= 3;
+	optab["JLT"].format 	= 3;
 	optab["J"].opcode		= 0x3C;
 	optab["J"].format 		= 3;
 
@@ -179,8 +179,8 @@ void opcode_initialize() {
 	optab["LDT"].format		= 3;
 	optab["LDX"].opcode		= 0x04;
 	optab["LDX"].format		= 3;
-	optab["LDCH"].opcode		= 0x50;
-	optab["LDCH"].format		= 3;
+	optab["LDCH"].opcode	= 0x50;
+	optab["LDCH"].format	= 3;
 
 	optab["STA"].opcode		= 0x0C;
 	optab["STA"].format		= 3;	
@@ -194,25 +194,25 @@ void opcode_initialize() {
 	optab["STT"].format		= 3;
 	optab["STX"].opcode		= 0x10;
 	optab["STX"].format		= 3;
-	optab["STCH"].opcode		= 0x54;
-	optab["STCH"].format		= 3;
+	optab["STCH"].opcode	= 0x54;
+	optab["STCH"].format	= 3;
 
 	optab["TIX"].opcode		= 0x2C;
-	optab["TIX"].format 		= 3;
-	optab["TIXR"].opcode		= 0xB8;
-	optab["TIXR"].format 		= 3;
+	optab["TIX"].format 	= 3;
+	optab["TIXR"].opcode	= 0xB8;
+	optab["TIXR"].format 	= 3;
 
-  	optab["RSUB"].opcode		= 0x4C;
-  	optab["RSUB"].format 		= 1;
-  	optab["JSUB"].opcode			= 0x48;
+  	optab["RSUB"].opcode	= 0x4C;
+  	optab["RSUB"].format 	= 1;
+  	optab["JSUB"].opcode	= 0x48;
   	optab["JSUB"].format 	= 3;
 
   	optab["AND"].opcode		= 0x40;
-  	optab["AND"].format 		= 3;
-  	optab["SHIFTL"].opcode		= 0xA4;
-  	optab["SHIFTL"].format  	= 2;
-  	optab["SHIFTR"].opcode		= 0xA8;
-  	optab["SHIFTR"].format  	= 2;
+  	optab["AND"].format 	= 3;
+  	optab["SHIFTL"].opcode	= 0xA4;
+  	optab["SHIFTL"].format  = 2;
+  	optab["SHIFTR"].opcode	= 0xA8;
+  	optab["SHIFTR"].format  = 2;
   	optab["OR"].opcode		= 0x44;
   	optab["OR"].format		= 2;
   	optab["RMO"].opcode		= 0xAC;
@@ -401,6 +401,7 @@ int main() {
 				}
 			} 
 			objectcode = calculate_objectcode(vec[i],i+1);
+			cout << hex << objectcode.opcode << "\n";
 			if (objectcode.format == 1){
 				memory[locattr] = objectcode.opcode;
 				locattr++;	
@@ -412,17 +413,17 @@ int main() {
 				locattr++;
 			}
 			else if(objectcode.format == 3){
-				memory[locattr] = objectcode.opcode + objectcode.flags >> 4;
+				memory[locattr] = objectcode.opcode + (objectcode.flags >> 4);
 				locattr++;
-				memory[locattr] = (objectcode.flags & 0xF) << 4 + objectcode.disp >> 8;
+				memory[locattr] = (objectcode.flags & 0xF) << 4 + (objectcode.disp >> 8);
 				locattr++;
 				memory[locattr] = objectcode.disp & 0xFF;
 				locattr++;
 			}
 			else{
-				memory[locattr] = objectcode.opcode + objectcode.flags >> 4;
+				memory[locattr] = objectcode.opcode + (objectcode.flags >> 4);
 				locattr++;
-				memory[locattr] = (objectcode.flags & 0xF) << 4 + objectcode.disp >> 8;
+				memory[locattr] = (objectcode.flags & 0xF) << 4 + (objectcode.disp >> 8);
 				locattr++;
 				memory[locattr] = (objectcode.disp & 0xFF00) >> 8;
 				locattr++;
