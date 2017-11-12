@@ -45,10 +45,10 @@ instruction calculate_objectcode(vector<string> vec, int lineno, registers r){
 	instruction result;
 	string str;
 	int i;
-	result.opcode = 0;
-	result.flags = 0;
-	result.disp = 0;
-	result.format = 0;
+	result.opcode = -1;
+	result.flags = -1;
+	result.disp = -1;
+	result.format = -1;
 	if(vec.size() <= 2)
 		i = 0;
 	else
@@ -57,7 +57,7 @@ instruction calculate_objectcode(vector<string> vec, int lineno, registers r){
 	if(vec[i][0] == '+'){
 				str = vec[i].substr(1);
 				if(optab.find(str) != optab.end() && optab[str].format == 3){
-					result.format = optab[str].format + 1;
+					result.format = 4;
 					result.opcode = optab[str].opcode & 0xFC;
 					result.flags = result.flags | 0x1;//0 0 0 0 0 1 
 			}else {
@@ -78,7 +78,7 @@ instruction calculate_objectcode(vector<string> vec, int lineno, registers r){
 			exit(0);
 		}
 		/*flags and disp TO DO ADD DIRECT ADDRESSING*/
-		if(optab[vec[i]].format >=2)
+		if(result.format >= 3){
 				if(vec[i+1][0] == '#'){
 						result.disp = stoi(vec[1].substr(1));
 						result.flags = result.flags | 0x10;//0 1 0 0 0 0 immediate addressing
@@ -112,6 +112,12 @@ instruction calculate_objectcode(vector<string> vec, int lineno, registers r){
 					cout << "Undefined Symbol at line no." << lineno << endl;
 					exit(0);//exit
 				}
+			} else if(result.format == 2){//ADDR S,A
+				result.disp = (registertab[vec[i+1][0]] << 8) + registertab[vec[i+1][2]];
+
+			} else {
+
+			}
 	return result;
 }
 
@@ -192,7 +198,7 @@ void opcode_initialize() {
 	optab["TIXR"].format 	= 3;
 
   	optab["RSUB"].opcode	= 0x4C;
-  	optab["RSUB"].format 	= 3;
+  	optab["RSUB"].format 	= 1;
   	optab["JSUB"].opcode	= 0x48;
   	optab["JSUB"].format 	= 3;
 
