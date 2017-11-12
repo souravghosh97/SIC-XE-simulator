@@ -37,6 +37,8 @@ typedef struct{
 
 bool pc_relative = true;//to denote base relative or pc
 
+int r[7]={0,0,0,0,0,0,0};
+
 bool is_branch(vector<string> vec){
 	int i;
 	if (vec.size() <= 2)
@@ -51,7 +53,7 @@ unordered_map <string, int16> symtab;
 unordered_map <string, object> optab;
 unordered_map <int8, int8> registertab;
 
-instruction calculate_objectcode(vector<string> vec, int lineno, registers r){
+instruction calculate_objectcode(vector<string> vec, int lineno){
 	instruction result;
 	string str;
 	int i;
@@ -97,27 +99,27 @@ instruction calculate_objectcode(vector<string> vec, int lineno, registers r){
 						result.flags = result.flags | 0x10;//0 1 0 0 0 0 immediate addressing
 				} else if (symtab.find(vec[i+1]) != symtab.end()){
 						if(pc_relative){
-						result.disp = symtab[vec[i+1]] - r.PC;
+						result.disp = symtab[vec[i+1]] - r[6];
 						result.flags = result.flags | 0x32;//1 1 0 0 1 0 pc-relative addressing
 					}else{
-						result.disp = symtab[vec[i+1]] - r.B;
+						result.disp = symtab[vec[i+1]] - r[3];
 						result.flags = result.flags | 0x34;//1 1 0 1 0 0 base relative addressing 
 					}
 				}else if(vec[i+1].back() == 'X' && symtab.find(vec[i+1].substr(0,vec[1].length()-2)) != symtab.end()){//LDA ARRAY,X
 					if(pc_relative){
-						result.disp = symtab[vec[i+1].substr(0,vec[1].length()-2)] - r.PC;
+						result.disp = symtab[vec[i+1].substr(0,vec[1].length()-2)] - r[6];
 						result.flags = result.flags | 0x3A;//1 1 1 0 1 0 index addressing pc relative 
 					}else{
-						result.disp = symtab[vec[i+1].substr(0,vec[1].length()-2)] - r.B;
+						result.disp = symtab[vec[i+1].substr(0,vec[1].length()-2)] - r[3];
 						result.flags = result.flags | 0x34;//1 1 1 1 0 0 index addrssing base relative
 					}
 					result.flags = result.flags | 0x38;	
 				}else if (vec[i+1].front() == '@' && symtab.find(vec[1].substr(1)) != symtab.end()){
 					if(pc_relative){
-						result.disp = symtab[vec[i+1].substr(0,vec[i+1].length()-2)] - r.PC;
+						result.disp = symtab[vec[i+1].substr(0,vec[i+1].length()-2)] - r[6];
 						result.flags = result.flags | 0x22;//1 0 0 0 1 0 pc relative indirect addressing
 					}else{
-						result.disp = symtab[vec[i+1].substr(0,vec[i+1].length()-2)] - r.B;
+						result.disp = symtab[vec[i+1].substr(0,vec[i+1].length()-2)] - r[3];
 						result.flags = result.flags | 0x24;//1 0 0 1 0 0 base relative indirect addressing
 					}
 				}
@@ -347,8 +349,7 @@ int main() {
 	locattr = start_location;
 	fout.open("output.txt");
 	register_initialize();
-	registers r;
-	r.PC = start_location;
+	r[6] = start_location;
 	fout.setf(ios_base::hex , ios_base::basefield);
 	for (i = 0;i < len;i++){
 		if(vec[i].size() == 0)
@@ -365,44 +366,47 @@ int main() {
 			else
 				j = 1;
 			if(vec[i][j] == "WORD"){
-				r.PC = r.PC + 3; 
+				r[6] = r[6] + 3; 
 				memory[locattr] = stoi(vec[i][j+1]) && 0xFF;
 				locattr++;
 				memory[locattr] = stoi(vec[i][j+1]) && 0xFF00 >> 8;
 				locattr++;
 				memory[locattr] = stoi(vec[i][j+1]) && 0xFF0000 >> 16;
 				locattr++;
+				continue;
 			}
 			else if(vec[i][j] == "BYTE"){
-				word = vec[i][j+1].substr(3);//C'ABC' TO ABC'
-				word.back() = '\0';// ABC' TO ABC
-				r.PC = r.PC + word.length();
+				word = vec[i][j+1].substr(2,vec[i][j+1].size()-3);//C'ABC' TO ABC'
+				r[6] = r[6] + word.length();
 				for(int k = 0;k < word.length();k++){
 					memory[locattr] = word[k];
 					locattr++;
 				}
+				continue;
 
 			}
 			else if(vec[i][j] == "RESW"){
-				r.PC = r.PC + 3*stoi(vec[i][2]);
+				r[6] = r[6] + 3*stoi(vec[i][2]);
 				locattr = locattr + 3*stoi(vec[i][2]);
+				continue;
 			}
 			else{
-				r.PC = r.PC + stoi(vec[i][2]);
+				r[6] = r[6] + stoi(vec[i][2]);
 				locattr = locattr + stoi(vec[i][2]);
+				continue;
 			}
 
 			if(!is_branch(vec[i]))
-				r.PC = r.PC + objectcode.format;
+				r[6] = r[6] + objectcode.format;
 			else{
 				if(symtab.find(vec[i][j]) != symtab.end())
-					r.PC = symtab[vec[i][j]];
+					r[6] = symtab[vec[i][j]];
 				else{
 					cout << "Symbol not defined at lineno " << i << "\n";
 					break;
 				}
 			} 
-			objectcode = calculate_objectcode(vec[i],i,r);
+			objectcode = calculate_objectcode(vec[i],i);
 			if (objectcode.format == 1){
 				memory[locattr] = objectcode.opcode;
 				locattr++;	
