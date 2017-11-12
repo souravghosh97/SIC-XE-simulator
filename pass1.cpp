@@ -37,6 +37,16 @@ typedef struct{
 
 bool pc_relative = true;//to denote base relative or pc
 
+bool is_branch(vector<string> vec){
+	int i;
+	if (vec.size() <= 2)
+		i=0;
+	else 
+		i=1;
+	return  (vec[i] == "JSUB" || vec[i] == "J" || vec[i] == "JEQ" || vec[i] == "JLT") ||
+			(vec[i] == "+JSUB" || vec[i] == "+J" || vec[i] == "+JEQ" || vec[i] == "+JLT");
+
+}
 unordered_map <string, int16> symtab;
 unordered_map <string, object> optab;
 unordered_map <int8, int8> registertab;
@@ -77,9 +87,12 @@ instruction calculate_objectcode(vector<string> vec, int lineno, registers r){
 			cout << "Undefined Symbol at line no." << lineno << endl;
 			exit(0);
 		}
-		/*flags and disp TO DO ADD DIRECT ADDRESSING*/
 		if(result.format >= 3){
-				if(vec[i+1][0] == '#'){
+				if(vec[i] == "JSUB" || vec[i] == "+JSUB"){/*flags and disp TO DO ADD DIRECT ADDRESSING*/
+						result.disp = symtab[vec[i+1]];// have to add check here
+						result.flags = result.flags | 0x30;// 1 1 0 0 0 0 direct addressing
+					}
+				else if(vec[i+1][0] == '#'){
 						result.disp = stoi(vec[1].substr(1));
 						result.flags = result.flags | 0x10;//0 1 0 0 0 0 immediate addressing
 				} else if (symtab.find(vec[i+1]) != symtab.end()){
@@ -347,10 +360,79 @@ int main() {
 			fout << "E^" << start_location << print(6) << length << endl;	
 		}
 		else{
-			objectcode = calculate_objectcode(vec[i],i,r);
-			/*memory[locattr] = TO DO*/
+			if(vec[i].size() <= 2)
+				j = 0;
+			else
+				j = 1;
+			if(vec[i][j] == "WORD"){
+				r.PC = r.PC + 3; 
+				memory[locattr] = stoi(vec[i][j+1]) && 0xFF;
+				locattr++;
+				memory[locattr] = stoi(vec[i][j+1]) && 0xFF00 >> 8;
+				locattr++;
+				memory[locattr] = stoi(vec[i][j+1]) && 0xFF0000 >> 16;
+				locattr++;
+			}
+			else if(vec[i][j] == "BYTE"){
+				word = vec[i][j+1].substr(3);//C'ABC' TO ABC'
+				word.back() = '\0';// ABC' TO ABC
+				r.PC = r.PC + word.length();
+				for(int k = 0;k < word.length();k++){
+					memory[locattr] = word[k];
+					locattr++;
+				}
 
+			}
+			else if(vec[i][j] == "RESW"){
+				r.PC = r.PC + 3*stoi(vec[i][2]);
+				locattr = locattr + 3*stoi(vec[i][2]);
+			}
+			else{
+				r.PC = r.PC + stoi(vec[i][2]);
+				locattr = locattr + stoi(vec[i][2]);
+			}
+
+			if(!is_branch(vec[i]))
+				r.PC = r.PC + objectcode.format;
+			else{
+				if(symtab.find(vec[i][j]) != symtab.end())
+					r.PC = symtab[vec[i][j]];
+				else{
+					cout << "Symbol not defined at lineno " << i << "\n";
+					break;
+				}
+			} 
+			objectcode = calculate_objectcode(vec[i],i,r);
+			if (objectcode.format == 1){
+				memory[locattr] = objectcode.opcode;
+				locattr++;	
+			}
+			else if(objectcode.format == 2){
+				memory[locattr] = objectcode.opcode;
+				locattr++;	
+				memory[locattr] = objectcode.disp;
+				locattr++;
+			}
+			else if(objectcode.format == 3){
+				memory[locattr] = objectcode.opcode + objectcode.flags >> 4;
+				locattr++;
+				memory[locattr] = (objectcode.flags & 0x4 << 4)+ objectcode.disp >> 8;
+				locattr++;
+				memory[locattr] = objectcode.disp & 0xFF;
+				locattr++;
+			}
+			else{
+				memory[locattr] = objectcode.opcode + objectcode.flags >> 4;
+				locattr++;
+				memory[locattr] = (objectcode.flags & 0x4 << 4)+ objectcode.disp >> 8;
+				locattr++;
+				memory[locattr] = (objectcode.disp & 0xFF00) >> 8;
+				locattr++;
+				memory[locattr] = objectcode.disp & 0xFF;
+				locattr++;
+			}
 		}
+
 	}
 
 	return 0;
