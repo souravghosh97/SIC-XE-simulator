@@ -13,19 +13,19 @@ using namespace std;
 typedef char int8;
 typedef short int16;
 typedef pair<int8,int16> int24;
-typedef struct{
-	int opcode;//can be 8 or 6bit
-	int flags;// 6 bit
-	int disp;// 12 or 20 bits
+typedef struct {
+	int opcode; // can be 8 or 6bit
+	int flags; // 6 bit
+	int disp; // 12 or 20 bits
 	int format;
-}instruction;
+} instruction;
 
-typedef struct{
+typedef struct {
 	int8 opcode;
 	int format;
-}object;
+} object;
 
-typedef struct{
+typedef struct {
 	int PC;
 	int A;
 	int B;
@@ -33,27 +33,27 @@ typedef struct{
 	int T;
 	int L;
 	int X;
-}registers;
+} registers;
 
-bool pc_relative = true;//to denote base relative or pc
+bool pc_relative = true; // to denote base relative or pc
 
-int r[7]={0,0,0,0,0,0,0};
+int r[7] = {0,0,0,0,0,0,0};
 
-bool is_branch(vector<string> vec){
+bool is_branch(vector<string> vec) {
 	int i;
 	if (vec.size() <= 2)
 		i=0;
-	else 
+	else
 		i=1;
-	return  (vec[i] == "JSUB" || vec[i] == "J" || vec[i] == "JEQ" || vec[i] == "JLT") ||
+	return (vec[i] == "JSUB" || vec[i] == "J" || vec[i] == "JEQ" || vec[i] == "JLT") ||
 			(vec[i] == "+JSUB" || vec[i] == "+J" || vec[i] == "+JEQ" || vec[i] == "+JLT");
-
 }
+
 unordered_map <string, int16> symtab;
 unordered_map <string, object> optab;
 unordered_map <int8, int8> registertab;
 
-instruction calculate_objectcode(vector<string> vec, int lineno){
+instruction calculate_objectcode(vector<string> vec, int lineno) {
 	instruction result;
 	string str;
 	int i;
@@ -66,167 +66,166 @@ instruction calculate_objectcode(vector<string> vec, int lineno){
 	else
 		i = 1;
 	/* opcode*/
-	if(vec[i][0] == '+'){
-				str = vec[i].substr(1);
-				if(optab.find(str) != optab.end() && optab[str].format == 3){
-					result.format = 4;
-					result.opcode = optab[str].opcode & 0xFC;
-					result.flags = result.flags | 0x1;//0 0 0 0 0 1 
-			}else {
-				cout << "Undefined Symbol at line no." << lineno << endl;
-				exit(0);//exit 
-			}
-		} else if (optab.find(vec[i]) != optab.end()){
-			if(optab[vec[i]].format == 3){
-				result.opcode = optab[vec[i]].opcode & 0xFC;
-				result.format = optab[vec[i]].format;
-			}
-			else
-				result.opcode = optab[vec[i]].opcode;
-				result.format = optab[vec[i]].format;
-		}
-		else{
+	if (vec[i][0] == '+') {
+		str = vec[i].substr(1);
+		if (optab.find(str) != optab.end() && optab[str].format == 3) {
+			result.format = 4;
+			result.opcode = optab[str].opcode & 0xFC;
+			result.flags = result.flags | 0x1;//0 0 0 0 0 1
+		} else {
 			cout << "Undefined Symbol at line no." << lineno << endl;
-			exit(0);
+			exit(0);//exit
 		}
-		if(result.format >= 3){
-				if(vec[i] == "JSUB" || vec[i] == "+JSUB"){/*flags and disp TO DO ADD DIRECT ADDRESSING*/
-						result.disp = symtab[vec[i+1]];// have to add check here
-						result.flags = result.flags | 0x30;// 1 1 0 0 0 0 direct addressing
-					}
-				else if(vec[i+1][0] == '#'){
-						result.disp = stoi(vec[1].substr(1));
-						result.flags = result.flags | 0x10;//0 1 0 0 0 0 immediate addressing
-				} else if (symtab.find(vec[i+1]) != symtab.end()){
-						if(pc_relative){
-						result.disp = symtab[vec[i+1]] - r[6];
-						result.flags = result.flags | 0x32;//1 1 0 0 1 0 pc-relative addressing
-					}else{
-						result.disp = symtab[vec[i+1]] - r[3];
-						result.flags = result.flags | 0x34;//1 1 0 1 0 0 base relative addressing 
-					}
-				}else if(vec[i+1].back() == 'X' && symtab.find(vec[i+1].substr(0,vec[1].length()-2)) != symtab.end()){//LDA ARRAY,X
-					if(pc_relative){
-						result.disp = symtab[vec[i+1].substr(0,vec[1].length()-2)] - r[6];
-						result.flags = result.flags | 0x3A;//1 1 1 0 1 0 index addressing pc relative 
-					}else{
-						result.disp = symtab[vec[i+1].substr(0,vec[1].length()-2)] - r[3];
-						result.flags = result.flags | 0x34;//1 1 1 1 0 0 index addrssing base relative
-					}
-					result.flags = result.flags | 0x38;	
-				}else if (vec[i+1].front() == '@' && symtab.find(vec[1].substr(1)) != symtab.end()){
-					if(pc_relative){
-						result.disp = symtab[vec[i+1].substr(0,vec[i+1].length()-2)] - r[6];
-						result.flags = result.flags | 0x22;//1 0 0 0 1 0 pc relative indirect addressing
-					}else{
-						result.disp = symtab[vec[i+1].substr(0,vec[i+1].length()-2)] - r[3];
-						result.flags = result.flags | 0x24;//1 0 0 1 0 0 base relative indirect addressing
-					}
-				}
-				else{
-					cout << "Undefined Symbol at line no." << lineno << endl;
-					exit(0);//exit
-				}
-			} else if(result.format == 2){//ADDR S,A
-				result.disp = (registertab[vec[i+1][0]] << 8) + registertab[vec[i+1][2]];
-
+	} else if (optab.find(vec[i]) != optab.end()) {
+		if (optab[vec[i]].format == 3) {
+			result.opcode = optab[vec[i]].opcode & 0xFC;
+			result.format = optab[vec[i]].format;
+		} else {
+			result.opcode = optab[vec[i]].opcode;
+			result.format = optab[vec[i]].format;
+		}
+	}
+	else {
+		cout << "Undefined Symbol at line no." << lineno << endl;
+		exit(0);
+	}
+	if (result.format >= 3) {
+		if (vec[i] == "JSUB" || vec[i] == "+JSUB") {
+			/*flags and disp TO DO ADD DIRECT ADDRESSING*/
+			result.disp = symtab[vec[i+1]]; // have to add check here
+			result.flags = result.flags | 0x30; // 1 1 0 0 0 0 direct addressing
+		} else if(vec[i+1][0] == '#') {
+			result.disp = stoi(vec[1].substr(1));
+			result.flags = result.flags | 0x10; // 0 1 0 0 0 0 immediate addressing
+		} else if (symtab.find(vec[i+1]) != symtab.end()){
+			if (pc_relative) {
+				result.disp = symtab[vec[i+1]] - r[6];
+				result.flags = result.flags | 0x32; // 1 1 0 0 1 0 pc-relative addressing
 			} else {
-
+				result.disp = symtab[vec[i+1]] - r[3];
+				result.flags = result.flags | 0x34; // 1 1 0 1 0 0 base relative addressing
 			}
+		} else if (vec[i+1].back() == 'X' && symtab.find(vec[i+1].substr(0,vec[1].length()-2)) != symtab.end()) {
+			//LDA ARRAY,X
+			if (pc_relative) {
+				result.disp = symtab[vec[i+1].substr(0,vec[1].length()-2)] - r[6];
+				result.flags = result.flags | 0x3A; // 1 1 1 0 1 0 index addressing pc relative
+			} else {
+				result.disp = symtab[vec[i+1].substr(0,vec[1].length()-2)] - r[3];
+				result.flags = result.flags | 0x34; // 1 1 1 1 0 0 index addrssing base relative
+			}
+			result.flags = result.flags | 0x38;
+		} else if (vec[i+1].front() == '@' && symtab.find(vec[1].substr(1)) != symtab.end()) {
+			if (pc_relative) {
+				result.disp = symtab[vec[i+1].substr(0,vec[i+1].length()-2)] - r[6];
+				result.flags = result.flags | 0x22; // 1 0 0 0 1 0 pc relative indirect addressing
+			} else {
+				result.disp = symtab[vec[i+1].substr(0,vec[i+1].length()-2)] - r[3];
+				result.flags = result.flags | 0x24; // 1 0 0 1 0 0 base relative indirect addressing
+			}
+		} else {
+			cout << "Undefined Symbol at line no." << lineno << endl;
+			exit(0); // exit
+		}
+	} else if (result.format == 2) {
+		//ADDR S,A
+		result.disp = (registertab[vec[i+1][0]] << 8) + registertab[vec[i+1][2]];
+	} else {
+	}
 	return result;
 }
 
 void register_initialize() {
 	registertab['A'] = 0;
-  	registertab['X'] = 1;
-  	registertab['L'] = 2;
-  	registertab['B'] = 3;
-  	registertab['S'] = 4;
-  	registertab['T'] = 5;
+	registertab['X'] = 1;
+	registertab['L'] = 2;
+	registertab['B'] = 3;
+	registertab['S'] = 4;
+	registertab['T'] = 5;
 }
 
 void opcode_initialize() {
-	optab["ADD"].opcode 	= 0x18;
-	optab["ADD"].format 	= 3;
-	optab["ADDR"].opcode 	= 0x90;
-	optab["ADDR"].format 	= 2;
-	optab["DIV"].opcode		= 0x24;
-	optab["DIV"].format 	= 3;
-	optab["DIVR"].opcode	= 0x9C;
-	optab["DIVR"].format 	= 2;
-	optab["SUB"].opcode		= 0x1C;
-	optab["SUB"].format		= 3;
-	optab["SUBR"].opcode	= 0x5C;
-	optab["SUBR"].format	= 2;
-	optab["MUL"].opcode		= 0x20;
-	optab["MUL"].format		= 3;
-	optab["MULR"].opcode	= 0x98;
-	optab["MULR"].format	= 2;
+	optab["ADD"].opcode 			= 0x18;
+	optab["ADD"].format 			= 3;
+	optab["ADDR"].opcode 			= 0x90;
+	optab["ADDR"].format 			= 2;
+	optab["DIV"].opcode				= 0x24;
+	optab["DIV"].format 			= 3;
+	optab["DIVR"].opcode			= 0x9C;
+	optab["DIVR"].format 			= 2;
+	optab["SUB"].opcode				= 0x1C;
+	optab["SUB"].format				= 3;
+	optab["SUBR"].opcode			= 0x5C;
+	optab["SUBR"].format			= 2;
+	optab["MUL"].opcode				= 0x20;
+	optab["MUL"].format				= 3;
+	optab["MULR"].opcode			= 0x98;
+	optab["MULR"].format			= 2;
 
-	optab["COMP"].opcode	= 0x28;
-	optab["COMP"].format	= 3;
-	optab["COMPR"].opcode	= 0xA0;
-	optab["COMPR"].format	= 2;
+	optab["COMP"].opcode			= 0x28;
+	optab["COMP"].format			= 3;
+	optab["COMPR"].opcode			= 0xA0;
+	optab["COMPR"].format			= 2;
 
-	optab["JEQ"].opcode		= 0x30;
-	optab["JEQ"].format 	= 3;
-	optab["JGT"].opcode		= 0x34;
-	optab["JGT"].format 	= 3;
-	optab["JLT"].opcode		= 0x38;
-	optab["JLT"].format 	= 3;
-	optab["J"].opcode		= 0x3C;
-	optab["J"].format 		= 3;
+	optab["JEQ"].opcode				= 0x30;
+	optab["JEQ"].format 			= 3;
+	optab["JGT"].opcode				= 0x34;
+	optab["JGT"].format 			= 3;
+	optab["JLT"].opcode				= 0x38;
+	optab["JLT"].format 			= 3;
+	optab["J"].opcode					= 0x3C;
+	optab["J"].format 				= 3;
 
-	optab["LDA"].opcode		= 0x00;
-	optab["LDA"].format		= 3;
-	optab["LDB"].opcode		= 0x68;
-	optab["LDB"].format		= 3;
-	optab["LDL"].opcode		= 0x08;
-	optab["LDL"].format		= 3;
-	optab["LDS"].opcode		= 0x6C;
-	optab["LDS"].format		= 3;
-	optab["LDT"].opcode		= 0x74;
-	optab["LDT"].format		= 3;
-	optab["LDX"].opcode		= 0x04;
-	optab["LDX"].format		= 3;
-	optab["LDCH"].opcode	= 0x50;
-	optab["LDCH"].format	= 3;
+	optab["LDA"].opcode				= 0x00;
+	optab["LDA"].format				= 3;
+	optab["LDB"].opcode				= 0x68;
+	optab["LDB"].format				= 3;
+	optab["LDL"].opcode				= 0x08;
+	optab["LDL"].format				= 3;
+	optab["LDS"].opcode				= 0x6C;
+	optab["LDS"].format				= 3;
+	optab["LDT"].opcode				= 0x74;
+	optab["LDT"].format				= 3;
+	optab["LDX"].opcode				= 0x04;
+	optab["LDX"].format				= 3;
+	optab["LDCH"].opcode			= 0x50;
+	optab["LDCH"].format			= 3;
 
-	optab["STA"].opcode		= 0x0C;
-	optab["STA"].format		= 3;	
-	optab["STB"].opcode		= 0x78;
-	optab["STB"].format		= 3;
-	optab["STL"].opcode		= 0x14;
-	optab["STL"].format		= 3;
-	optab["STS"].opcode		= 0x7C;
-	optab["STS"].format		= 3;
-	optab["STT"].opcode		= 0x84;
-	optab["STT"].format		= 3;
-	optab["STX"].opcode		= 0x10;
-	optab["STX"].format		= 3;
-	optab["STCH"].opcode	= 0x54;
-	optab["STCH"].format	= 3;
+	optab["STA"].opcode				= 0x0C;
+	optab["STA"].format				= 3;
+	optab["STB"].opcode				= 0x78;
+	optab["STB"].format				= 3;
+	optab["STL"].opcode				= 0x14;
+	optab["STL"].format				= 3;
+	optab["STS"].opcode				= 0x7C;
+	optab["STS"].format				= 3;
+	optab["STT"].opcode				= 0x84;
+	optab["STT"].format				= 3;
+	optab["STX"].opcode				= 0x10;
+	optab["STX"].format				= 3;
+	optab["STCH"].opcode			= 0x54;
+	optab["STCH"].format			= 3;
 
-	optab["TIX"].opcode		= 0x2C;
-	optab["TIX"].format 	= 3;
-	optab["TIXR"].opcode	= 0xB8;
-	optab["TIXR"].format 	= 3;
+	optab["TIX"].opcode				= 0x2C;
+	optab["TIX"].format 			= 3;
+	optab["TIXR"].opcode			= 0xB8;
+	optab["TIXR"].format 			= 3;
 
-  	optab["RSUB"].opcode	= 0x4C;
-  	optab["RSUB"].format 	= 1;
-  	optab["JSUB"].opcode	= 0x48;
-  	optab["JSUB"].format 	= 3;
+	optab["RSUB"].opcode			= 0x4C;
+	optab["RSUB"].format 			= 1;
+	optab["JSUB"].opcode			= 0x48;
+	optab["JSUB"].format 			= 3;
 
-  	optab["AND"].opcode		= 0x40;
-  	optab["AND"].format 	= 3;
-  	optab["SHIFTL"].opcode	= 0xA4;
-  	optab["SHIFTL"].format  = 2;
-  	optab["SHIFTR"].opcode	= 0xA8;
-  	optab["SHIFTR"].format  = 2;
-  	optab["OR"].opcode		= 0x44;
-  	optab["OR"].format		= 2;
-  	optab["RMO"].opcode		= 0xAC;
-  	optab["RMO"].format		= 2;
+	optab["AND"].opcode				= 0x40;
+	optab["AND"].format 			= 3;
+	optab["SHIFTL"].opcode		= 0xA4;
+	optab["SHIFTL"].format  	= 2;
+	optab["SHIFTR"].opcode		= 0xA8;
+	optab["SHIFTR"].format  	= 2;
+	optab["OR"].opcode				= 0x44;
+	optab["OR"].format				= 2;
+	optab["RMO"].opcode				= 0xAC;
+	optab["RMO"].format				= 2;
 }
 
 int main() {
@@ -256,8 +255,8 @@ int main() {
 			lineno++;
 			continue;
 		}
-		if(vec[i][1] == "START"){
-			if(new_program){
+		if (vec[i][1] == "START") {
+			if (new_program) {
 				cout << "Duplicate START at line no. " << lineno << endl;
 				return 0;
 			}
@@ -267,13 +266,11 @@ int main() {
 			symtab[vec[i][0]] = locattr;
 			start_location = locattr;
 		}
-		if(vec[i][1] == "END"){
+		if (vec[i][1] == "END") {
 			if(vec[i][2] == program_name)
 				cout << "Error at line no." << lineno << endl;
 			return 0;
-
 		}
-
 		new_program = true;
 		if (vec[i][0][0] == '+' && optab.find(vec[i][0].substr(1)) != optab.end()) // +jsub extended instruction
 			locattr = locattr + 4;
@@ -315,18 +312,18 @@ int main() {
 						cout << "Invalid value at line no. " << lineno << endl;
 						return 0;
 					}
-				} else {// P BYTE abc
-						cout << "Invalid value at line no. " << lineno << endl;
-						return 0;
-					}
-
+				} else {
+					// P BYTE abc
+					cout << "Invalid value at line no. " << lineno << endl;
+					return 0;
+				}
 			} else {
 				symtab[vec[i][0]] = locattr;
 				if (vec[i][0][1] == '+' && optab.find(vec[i][1].substr(1)) != optab.end()) // loop +jsub extended instruction
 					locattr += 4;
-				else if (optab.find(vec[i][1]) != optab.end())//loop jsub abc
+				else if (optab.find(vec[i][1]) != optab.end()) // loop jsub abc
 					locattr += 3;
-				else{
+				else {
 					cout << "Invalid symbol at line no. " << lineno << endl;
 					return 0;
 				}
@@ -337,11 +334,11 @@ int main() {
 	}
 	fin.close();
 	length = (locattr - start_location);
-	len = i;// len is the total no of line in input.txt
+	len = i; // len is the total no of line in input.txt
 	/* PASS1 complete */
 
 
-	/* PASS2 START */ 
+	/* PASS2 START */
 	int8 memory[MEMORY_SIZE];
 	ofstream fout;
 	int j=0;
@@ -351,22 +348,22 @@ int main() {
 	register_initialize();
 	r[6] = start_location;
 	fout.setf(ios_base::hex , ios_base::basefield);
-	for (i = 0;i < len;i++){
-		if(vec[i].size() == 0)
+	for (i = 0;i < len;i++) {
+		if (vec[i].size() == 0)
 			continue;
 
-		if(vec[i][1] == "START")
+		if (vec[i][1] == "START")
 			fout << "H^" << program_name << print(6) << start_location << print(6) << length << endl;
-		else if(vec[i][1] == "END"){
-			fout << "E^" << start_location << print(6) << length << endl;	
+		else if (vec[i][1] == "END") {
+			fout << "E^" << start_location << print(6) << length << endl;
 		}
-		else{
-			if(vec[i].size() <= 2)
+		else {
+			if (vec[i].size() <= 2)
 				j = 0;
 			else
 				j = 1;
-			if(vec[i][j] == "WORD"){
-				r[6] = r[6] + 3; 
+			if (vec[i][j] == "WORD") {
+				r[6] = r[6] + 3;
 				memory[locattr] = stoi(vec[i][j+1]) && 0xFF;
 				locattr++;
 				memory[locattr] = stoi(vec[i][j+1]) && 0xFF00 >> 8;
@@ -374,58 +371,50 @@ int main() {
 				memory[locattr] = stoi(vec[i][j+1]) && 0xFF0000 >> 16;
 				locattr++;
 				continue;
-			}
-			else if(vec[i][j] == "BYTE"){
-				word = vec[i][j+1].substr(2,vec[i][j+1].size()-3);//C'ABC' TO ABC'
+			} else if (vec[i][j] == "BYTE") {
+				word = vec[i][j+1].substr(2,vec[i][j+1].size()-3); // C'ABC' TO ABC'
 				r[6] = r[6] + word.length();
-				for(int k = 0;k < word.length();k++){
+				for (int k = 0;k < word.length();k++) {
 					memory[locattr] = word[k];
 					locattr++;
 				}
 				continue;
-
-			}
-			else if(vec[i][j] == "RESW"){
+			} else if (vec[i][j] == "RESW") {
 				r[6] = r[6] + 3*stoi(vec[i][2]);
 				locattr = locattr + 3*stoi(vec[i][2]);
 				continue;
-			}
-			else{
+			} else {
 				r[6] = r[6] + stoi(vec[i][2]);
 				locattr = locattr + stoi(vec[i][2]);
 				continue;
 			}
-
-			if(!is_branch(vec[i]))
+			if (!is_branch(vec[i]))
 				r[6] = r[6] + objectcode.format;
-			else{
-				if(symtab.find(vec[i][j]) != symtab.end())
+			else {
+				if (symtab.find(vec[i][j]) != symtab.end())
 					r[6] = symtab[vec[i][j]];
-				else{
+				else {
 					cout << "Symbol not defined at lineno " << i << "\n";
 					break;
 				}
-			} 
-			objectcode = calculate_objectcode(vec[i],i);
-			if (objectcode.format == 1){
-				memory[locattr] = objectcode.opcode;
-				locattr++;	
 			}
-			else if(objectcode.format == 2){
+			objectcode = calculate_objectcode(vec[i],i);
+			if (objectcode.format == 1) {
 				memory[locattr] = objectcode.opcode;
-				locattr++;	
+				locattr++;
+			} else if (objectcode.format == 2) {
+				memory[locattr] = objectcode.opcode;
+				locattr++;
 				memory[locattr] = objectcode.disp;
 				locattr++;
-			}
-			else if(objectcode.format == 3){
+			} else if (objectcode.format == 3) {
 				memory[locattr] = objectcode.opcode + objectcode.flags >> 4;
 				locattr++;
 				memory[locattr] = (objectcode.flags & 0x4 << 4)+ objectcode.disp >> 8;
 				locattr++;
 				memory[locattr] = objectcode.disp & 0xFF;
 				locattr++;
-			}
-			else{
+			} else {
 				memory[locattr] = objectcode.opcode + objectcode.flags >> 4;
 				locattr++;
 				memory[locattr] = (objectcode.flags & 0x4 << 4)+ objectcode.disp >> 8;
@@ -436,8 +425,6 @@ int main() {
 				locattr++;
 			}
 		}
-
 	}
-
 	return 0;
 }
