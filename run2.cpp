@@ -473,7 +473,7 @@ int main() {
 	fout.close();
 
 	/*
-	TO DO each case copy from Thakur and check calculate Address
+	TO DO each case copy from Thakur and check calculate_address function
 	*/
 	return 0;
 }
