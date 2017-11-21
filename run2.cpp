@@ -10,6 +10,7 @@
 #define print(i) "^" << setfill('0') << setw(i)
 using namespace std;
 
+int memory[MEMORY_SIZE];
 typedef char int8;
 typedef short int16;
 typedef pair<int8,int16> int24;
@@ -25,23 +26,58 @@ typedef struct{
 	int format;
 }object;
 
+typedef struct{
+	int PC;
+	int A;
+	int B;
+	int S;
+	int T;
+	int L;
+	int X;
+}registers;
+
 bool pc_relative = true;//to denote base relative or pc
 
 int r[7]={0,0,0,0,0,0,0};
 
-bool is_branch(vector<string> vec){
-	int i;
-	if (vec.size() <= 2)
-		i=0;
-	else 
-		i=1;
-	return  ((vec[i] == "JSUB") || (vec[i] == "J") || (vec[i] == "JEQ") || (vec[i] == "JLT") || (vec[i] == "+JSUB") || (vec[i] == "+J") || (vec[i] == "+JEQ") || (vec[i] == "+JLT"));
+bool is_branch(string str){
+	return  (str == "JSUB" || str == "J" || str == "JEQ" || str == "JLT") ||
+			(str == "+JSUB" || str == "+J" || str == "+JEQ" || str == "+JLT");
 
 }
 unordered_map <string, int> symtab;
 unordered_map <string, object> optab;
 unordered_map <int8, int8> registertab;
 
+
+
+pair<int,bool> calculate_address(instruction objectcode){//if it return address bool is 0 else data,1
+	int flags = objectcode.flags;
+	int effective_address;
+	int result;
+	int disp;
+	if (flags & 0x1)
+		disp = objectcode.disp & 0xFFFFF;
+	else
+		disp = objectcode.disp & 0xFFF;
+	
+	if (flags & 0x04)//base relative
+		effective_address = r[3] + disp;
+	else if (flags & 0x02)
+		effective_address = r[6] + disp;
+
+	if(flags & 0x08)
+			effective_address = effective_address +r[1];
+
+	if ((flags & 0x20) && (flags & 0x10))
+		return make_pair(effective_address,0);
+	else if (flags & 0x20)
+		return make_pair(memory[effective_address],0);
+	else if (flags & 0x10)
+		return make_pair(disp,1);
+
+
+}
 instruction calculate_objectcode(vector<string> vec, int lineno){
 	instruction result;
 	string str;
@@ -55,72 +91,77 @@ instruction calculate_objectcode(vector<string> vec, int lineno){
 	else
 		i = 1;
 	/* opcode*/
+
 	if (optab.find(vec[i]) != optab.end()){
 		if(optab[vec[i]].format == 3){
-				result.opcode = (optab[vec[i]].opcode & 0xFC);
-				result.format = optab[vec[i]].format;
+				result.opcode = optab[vec[i]].opcode & 0xFC;
+				result.format = 3;
 		}
-		else if (optab[vec[i]].format <= 2){
-				result.opcode = optab[vec[i]].opcode;
-				result.format = optab[vec[i]].format;
+		else if(optab[vec[i]].format <= 2){
+			result.opcode = optab[vec[i]].opcode;
+			result.format = optab[vec[i]].format;
+		}
+		else if(optab[vec[i]].format == 4){
+			result.format = 4;
+			result.opcode = optab[vec[i]].opcode & 0xFC;
+			result.flags = result.flags | 0x1;//0 0 0 0 0 1 
 		}
 		else {
-			result.format = 4;
-			result.opcode = (optab[vec[i]].opcode & 0xFC);
-			result.flags = result.flags | 0x1;
-		}
-
-	}
-	else {
 			cout << "Undefined Symbol at line no." << lineno << endl;
 			exit(0);
+		}
 	}
-		if(result.format >= 3){
-				if(vec[i] == "JSUB" || vec[i] == "+JSUB"){/*flags and disp TO DO ADD DIRECT ADDRESSING*/
-						result.disp = symtab[vec[i+1]];// have to add check here
-						result.flags = result.flags | 0x30;// 1 1 0 0 0 0 direct addressing
-					}
-				else if(vec[i+1][0] == '#'){
-						result.disp = stoi(vec[i+1].substr(1));
-						result.flags = result.flags | 0x10;//0 1 0 0 0 0 immediate addressing
-				} else if (symtab.find(vec[i+1]) != symtab.end()){
-						if(pc_relative){
-						cout << r[6];
-						result.disp = symtab[vec[i+1]] - r[6];
-						result.flags = result.flags | 0x32;//1 1 0 0 1 0 pc-relative addressing
-						}
-						else{
-						result.disp = symtab[vec[i+1]] - r[3];
-						result.flags = result.flags | 0x34;//1 1 0 1 0 0 base relative addressing 
-						}
-				}else if (vec[i+1].back() == 'X' && symtab.find(vec[i+1].substr(0,vec[i+1].length()-2)) != symtab.end()){//LDA ARRAY,X
-					if(pc_relative){
-						result.disp = symtab[vec[i+1].substr(0,vec[i+1].length()-2)] - r[6];
-						result.flags = result.flags | 0x3A;//1 1 1 0 1 0 index addressing pc relative 
-					}else{
-						result.disp = symtab[vec[i+1].substr(0,vec[i+1].length()-2)] - r[3];
-						result.flags = result.flags | 0x34;//1 1 1 1 0 0 index addrssing base relative
-					}
-					result.flags = result.flags | 0x38;	
-				}else if (vec[i+1].front() == '@' && symtab.find(vec[i+1].substr(1)) != symtab.end()){
-					if(pc_relative){
-						result.disp = symtab[vec[i+1].substr(0,vec[i+1].length()-2)] - r[6];
-						result.flags = result.flags | 0x22;//1 0 0 0 1 0 pc relative indirect addressing
-					}else{
-						result.disp = symtab[vec[i+1].substr(0,vec[i+1].length()-2)] - r[3];
-						result.flags = result.flags | 0x24;//1 0 0 1 0 0 base relative indirect addressing
-					}
+	if (result.format >= 3){
+		if (vec[i] == "+JSUB" && symtab.find(vec[i+1]) != symtab.end()){/*flags and disp TO DO ADD DIRECT ADDRESSING*/
+			result.disp = symtab[vec[i+1]];// have to add check here
+			result.flags = result.flags | 0x30;// 1 1 0 0 0 0 direct addressing
+		}
+		else if (vec[i+1][0] == '#'){
+			result.disp = stoi(vec[1].substr(1));
+			result.flags = result.flags | 0x10;//0 1 0 0 0 0 immediate addressing
+		} 
+		else if (symtab.find(vec[i+1]) != symtab.end()){
+			if(pc_relative){
+				result.disp = symtab[vec[i+1]] - r[6];
+				result.flags = result.flags | 0x32;//1 1 0 0 1 0 pc-relative addressing
 				}
-				else{
-					cout << "Undefined Symbol at line no." << lineno << endl;
-					exit(0);//exit
-				}
-			} else if(result.format == 2){//ADDR S,A
-				result.disp = (registertab[vec[i+1][0]] << 8) + registertab[vec[i+1][2]];
-
-			} else {
-
+			else {
+				result.disp = symtab[vec[i+1]] - r[3];
+				result.flags = result.flags | 0x34;//1 1 0 1 0 0 base relative addressing 
 			}
+		}
+		else if(vec[i+1].back() == 'X' && symtab.find(vec[i+1].substr(0,vec[1].length()-2)) != symtab.end()){//LDA ARRAY,X
+			if(pc_relative) {
+				result.disp = symtab[vec[i+1].substr(0,vec[1].length()-2)] - r[6];
+				result.flags = result.flags | 0x3A;//1 1 1 0 1 0 index addressing pc relative 
+			}
+			else {
+				result.disp = symtab[vec[i+1].substr(0,vec[1].length()-2)] - r[3];
+				result.flags = result.flags | 0x34;//1 1 1 1 0 0 index addrssing base relative
+			}  	
+		}
+		else if(vec[i+1].front() == '@' && symtab.find(vec[1].substr(1)) != symtab.end()){
+			if(pc_relative){
+				result.disp = symtab[vec[i+1].substr(0,vec[i+1].length()-2)] - r[6];
+				result.flags = result.flags | 0x22;//1 0 0 0 1 0 pc relative indirect addressing
+			}
+			else {
+				result.disp = symtab[vec[i+1].substr(0,vec[i+1].length()-2)] - r[3];
+				result.flags = result.flags | 0x24;//1 0 0 1 0 0 base relative indirect addressing
+			}
+		}
+		else{
+				cout << "Undefined Symbol at line no." << lineno << endl;
+				exit(0);//exit
+		}
+	} 
+	else if(result.format == 2){//ADDR S,A
+			result.disp = (registertab[vec[i+1][0]] << 8) + registertab[vec[i+1][2]];
+
+	} 
+	else {
+		//RSUB
+	}
 	return result;
 }
 
@@ -138,16 +179,16 @@ void opcode_initialize() {
 	optab["ADD"].format 	= 3;
 	optab["ADDR"].opcode 	= 0x90;
 	optab["ADDR"].format 	= 2;
-	optab["DIV"].opcode		= 0x24;
+	optab["DIV"].opcode	= 0x24;
 	optab["DIV"].format 	= 3;
 	optab["DIVR"].opcode	= 0x9C;
 	optab["DIVR"].format 	= 2;
-	optab["SUB"].opcode		= 0x1C;
-	optab["SUB"].format		= 3;
+	optab["SUB"].opcode	= 0x1C;
+	optab["SUB"].format  	= 3;
 	optab["SUBR"].opcode	= 0x5C;
 	optab["SUBR"].format	= 2;
-	optab["MUL"].opcode		= 0x20;
-	optab["MUL"].format		= 3;
+	optab["MUL"].opcode	= 0x20;
+	optab["MUL"].format	= 3;
 	optab["MULR"].opcode	= 0x98;
 	optab["MULR"].format	= 2;
 
@@ -156,52 +197,46 @@ void opcode_initialize() {
 	optab["COMPR"].opcode	= 0xA0;
 	optab["COMPR"].format	= 2;
 
-	optab["JEQ"].opcode		= 0x30;
+	optab["JEQ"].opcode	= 0x30;
 	optab["JEQ"].format 	= 3;
-	optab["JGT"].opcode		= 0x34;
+	optab["JGT"].opcode	= 0x34;
 	optab["JGT"].format 	= 3;
-	optab["JLT"].opcode		= 0x38;
+	optab["JLT"].opcode	= 0x38;
 	optab["JLT"].format 	= 3;
-	optab["J"].opcode		= 0x3C;
-	optab["J"].format 		= 3;
+	optab["J"].opcode	= 0x3C;
+	optab["J"].format 	= 3;
 
-	optab["LDA"].opcode		= 0x00;
-	optab["LDA"].format		= 3;
-	optab["+LDA"].opcode	= 0x00;
-	optab["+LDA"].format	= 4;
-	optab["LDB"].opcode		= 0x68;
-	optab["LDB"].format		= 3;
-	optab["LDL"].opcode		= 0x08;
-	optab["LDL"].format		= 3;
-	optab["LDS"].opcode		= 0x6C;
-	optab["LDS"].format		= 3;
-	optab["+LDS"].opcode	= 0x6C;
-	optab["+LDS"].format	= 4;
-	optab["LDT"].opcode		= 0x74;
-	optab["LDT"].format		= 3;
-	optab["+LDT"].opcode	= 0x74;
-	optab["+LDT"].format	= 4;
-	optab["LDX"].opcode		= 0x04;
-	optab["LDX"].format		= 3;
+	optab["LDA"].opcode	= 0x00;
+	optab["LDA"].format	= 3;
+	optab["LDB"].opcode	= 0x68;
+	optab["LDB"].format	= 3;
+	optab["LDL"].opcode	= 0x08;
+	optab["LDL"].format	= 3;
+	optab["LDS"].opcode	= 0x6C;
+	optab["LDS"].format	= 3;
+	optab["LDT"].opcode	= 0x74;
+	optab["LDT"].format	= 3;
+	optab["LDX"].opcode	= 0x04;
+	optab["LDX"].format	= 3;
 	optab["LDCH"].opcode	= 0x50;
 	optab["LDCH"].format	= 3;
 
-	optab["STA"].opcode		= 0x0C;
-	optab["STA"].format		= 3;	
-	optab["STB"].opcode		= 0x78;
-	optab["STB"].format		= 3;
-	optab["STL"].opcode		= 0x14;
-	optab["STL"].format		= 3;
-	optab["STS"].opcode		= 0x7C;
-	optab["STS"].format		= 3;
-	optab["STT"].opcode		= 0x84;
-	optab["STT"].format		= 3;
-	optab["STX"].opcode		= 0x10;
-	optab["STX"].format		= 3;
+	optab["STA"].opcode	= 0x0C;
+	optab["STA"].format	= 3;	
+	optab["STB"].opcode	= 0x78;
+	optab["STB"].format	= 3;
+	optab["STL"].opcode	= 0x14;
+	optab["STL"].format	= 3;
+	optab["STS"].opcode	= 0x7C;
+	optab["STS"].format	= 3;
+	optab["STT"].opcode	= 0x84;
+	optab["STT"].format	= 3;
+	optab["STX"].opcode	= 0x10;
+	optab["STX"].format	= 3;
 	optab["STCH"].opcode	= 0x54;
 	optab["STCH"].format	= 3;
 
-	optab["TIX"].opcode		= 0x2C;
+	optab["TIX"].opcode	= 0x2C;
 	optab["TIX"].format 	= 3;
 	optab["TIXR"].opcode	= 0xB8;
 	optab["TIXR"].format 	= 3;
@@ -210,19 +245,17 @@ void opcode_initialize() {
   	optab["RSUB"].format 	= 1;
   	optab["JSUB"].opcode	= 0x48;
   	optab["JSUB"].format 	= 3;
-  	optab["JSUB"].opcode	= 0x48;
-  	optab["+JSUB"].format 	= 4;
 
-  	optab["AND"].opcode		= 0x40;
+  	optab["AND"].opcode	= 0x40;
   	optab["AND"].format 	= 3;
   	optab["SHIFTL"].opcode	= 0xA4;
   	optab["SHIFTL"].format  = 2;
   	optab["SHIFTR"].opcode	= 0xA8;
   	optab["SHIFTR"].format  = 2;
-  	optab["OR"].opcode		= 0x44;
-  	optab["OR"].format		= 2;
-  	optab["RMO"].opcode		= 0xAC;
-  	optab["RMO"].format		= 2;
+  	optab["OR"].opcode	= 0x44;
+  	optab["OR"].format	= 2;
+  	optab["RMO"].opcode	= 0xAC;
+  	optab["RMO"].format	= 2;
 }
 
 int main() {
@@ -232,7 +265,7 @@ int main() {
 	istringstream s;
 	string line, word;
 	string program_name;
-	int lineno = 1, i = 0, len;
+	int lineno = 0, i = -1, len;
 	bool new_program = false;
 	int length;
 
@@ -243,13 +276,13 @@ int main() {
 	while (!fin.eof()) {
 		getline(fin, line);
 		s.str(line);
+		i++;
+		lineno++;
 		while (s >> word) {
 			vec[i].push_back(word);
 		}
 		s.clear();
 		if (vec[i].size() == 0) {
-			i++;
-			lineno++;
 			continue;
 		}
 		if(vec[i][1] == "START"){
@@ -263,8 +296,7 @@ int main() {
 			symtab[vec[i][0]] = locattr;
 			start_location = locattr;
 			new_program = true;
-			i++;
-			lineno++;
+			
 			continue;
 		}
 		if(vec[i][0] == "END"){
@@ -272,15 +304,12 @@ int main() {
 				cout << "Error at line no." << lineno << endl;
 				return 0;
 			}
-			i++;
-			lineno++;
+
 			break;
 		}
 		new_program = true;
-		if (vec[i][0][0] == '+' && optab.find(vec[i][0].substr(1)) != optab.end()) // +jsub extended instruction
-			locattr = locattr + 4;
-		else if (optab.find(vec[i][0]) != optab.end())
-			locattr = locattr + 3;
+		if (optab.find(vec[i][0]) != optab.end())
+			locattr = locattr + optab[vec[i][0]].format;
 		else {
 			if (symtab.find(vec[i][0]) != symtab.end()) {
 				cout << "Duplicate at line no. " << lineno << endl;
@@ -289,22 +318,29 @@ int main() {
 			if (vec[i][1] == "WORD") {
 				symtab[vec[i][0]] = locattr;
 				locattr = locattr + 3;
-			} else if (vec[i][1] == "RESW") {
+			} 
+			else if (vec[i][1] == "RESW") {
 				symtab[vec[i][0]] = locattr;
 				locattr = locattr + 3*stoi(vec[i][2]);
-			} else if (vec[i][1] == "RESB") {
+			} 
+			else if (vec[i][1] == "RESB") {
 				symtab[vec[i][0]] = locattr;
 				locattr = locattr + stoi(vec[i][2]);
-			} else if (vec[i][1] == "BYTE") {
+			} 
+			else if (vec[i][1] == "BYTE") {
 				symtab[vec[i][0]] = locattr;
 				if (vec[i][2][0] == 'C' && vec[i][2][1] == '\'') {
-						if(vec[i][2].back() == '\'')
-							locattr += (vec[i][2].length()-3);
-						else{
-							cout << "Invalid value at line no. " << lineno << endl;
-							return 0;
+					if(vec[i][2].length() == 6) {
+						if (vec[i][2] == "C\'EOF\'")
+							++locattr;
+						else {
+							locattr += 3;
 						}
-				} else if (vec[i][2][0] == 'X' && vec[i][2][1] == '\'') {
+					} else {
+						locattr += (vec[i][2].length()-3);
+					}
+				} 
+				else if (vec[i][2][0] == 'X' && vec[i][2][1] == '\'') {
 					if (vec[i][2].length() > 5) {
 						cout << "Invalid value at line no. " << lineno << endl;
 						return 0;
@@ -314,25 +350,23 @@ int main() {
 						cout << "Invalid value at line no. " << lineno << endl;
 						return 0;
 					}
-				} else {// P BYTE abc
+				} 
+				else {// P BYTE abc
 						cout << "Invalid value at line no. " << lineno << endl;
 						return 0;
-					}
+				}
 
-			} else {
+			} 
+			else {
 				symtab[vec[i][0]] = locattr;
-				if (vec[i][0][1] == '+' && optab.find(vec[i][1].substr(1)) != optab.end()) // loop +jsub extended instruction
-					locattr += 4;
-				else if (optab.find(vec[i][1]) != optab.end())//loop jsub abc
-					locattr += 3;
+				if (optab.find(vec[i][1]) != optab.end())//loop jsub abc
+					locattr += optab[vec[i][1]].format;
 				else{
 					cout << "Invalid symbol at line no. " << lineno << endl;
 					return 0;
 				}
 			}
 		}
-		i++;
-		lineno++;
 	}
 	fin.close();
 	length = (locattr - start_location);
@@ -340,7 +374,6 @@ int main() {
 	/* PASS1 complete */
 
 	/* PASS2 START */ 
-	int memory[MEMORY_SIZE];
 	ofstream fout;
 	int j=0;
 	instruction objectcode;
@@ -348,16 +381,14 @@ int main() {
 	fout.open("output.txt");
 	register_initialize();
 	r[6] = start_location;
-	cout << r[6] << "START\n";
 	fout.setf(ios_base::hex , ios_base::basefield);
-	for (i = 0;i < len;i++){
+	for (i = 0;i < vec.size();i++){
 		if(vec[i].size() == 0)
 			continue;
 		if(vec[i][1] == "START")
-			fout << "H^" << program_name << print(6) << start_location << print(6) << length << endl;
-		else if(vec[i][0] == "END"){
-			fout << "E^" << start_location << print(6) << length << endl;	
-		}
+			continue;
+		else if(vec[i][0] == "END")
+			continue;
 		else{
 			if(vec[i].size() <= 2)
 				j = 0;
@@ -365,7 +396,7 @@ int main() {
 				j = 1;
 			if(vec[i][j] == "WORD"){;
 				r[6] = r[6] + 3;
-				memory[locattr] = (stoi(vec[i][j+1]) & 0xFF0000) >> 16;
+				memory[locattr] = (stoi(vec[i][j+1]) & 0xFF0000) >> 16; 
 				locattr++;
 				memory[locattr] = (stoi(vec[i][j+1]) & 0xFF00) >> 8;
 				locattr++;
@@ -395,19 +426,17 @@ int main() {
 			}
 			else{}
 
-			if(!is_branch(vec[i]))
+			if(!is_branch(vec[i][j]))
 				r[6] = r[6] + optab[vec[i][j]].format;
 			else{
-				if(symtab.find(vec[i][j+1]) != symtab.end())
-					r[6] = symtab[vec[i][j+1]];
+				if(symtab.find(vec[i][j]) != symtab.end())
+					r[6] = symtab[vec[i][j]];
 				else{
-					cout << "Symbol not defined at lineno " << i+1 << "\n";
-					return 0;
+					cout << "Symbol not defined at lineno " << i << "\n";
+					break;
 				}
 			} 
-			cout << r[6]  << endl;
 			objectcode = calculate_objectcode(vec[i],i+1);
-			cout << hex << objectcode.opcode << "\n";
 			if (objectcode.format == 1){
 				memory[locattr] = objectcode.opcode;
 				locattr++;	
@@ -421,152 +450,30 @@ int main() {
 			else if(objectcode.format == 3){
 				memory[locattr] = objectcode.opcode + (objectcode.flags >> 4);
 				locattr++;
-				memory[locattr] = (objectcode.flags & 0x0F) << 4 + (objectcode.disp >> 8);
+				memory[locattr] = (objectcode.flags & 0xF) << 4 + (objectcode.disp >> 8);
 				locattr++;
-				memory[locattr] = (objectcode.disp & 0xFF);
+				memory[locattr] = objectcode.disp & 0xFF;
 				locattr++;
 			}
 			else{
-				memory[locattr] = objectcode.opcode + (objectcode.flags >> 4);
+				memory[locattr] = objectcode.opcode + objectcode.flags >> 4;
 				locattr++;
-				memory[locattr] = (objectcode.flags & 0x0F) << 4 + (objectcode.disp >> 8);
+				memory[locattr] = (objectcode.flags & 0xF) << 4 + (objectcode.disp >> 8);
 				locattr++;
 				memory[locattr] = (objectcode.disp & 0xFF00) >> 8;
 				locattr++;
-				memory[locattr] = (objectcode.disp & 0xFF);
+				memory[locattr] = objectcode.disp & 0xFF;
 				locattr++;
 			}
 		}
 
 	}
 	for(int k=start_location;k<locattr;k++)
-		fout << "\n" << setfill('0') << setw(4) << k << " " << setfill('0') << setw(2) << memory[k];  
+		fout  << setw(4) << setfill('0') << k << " " << setw(2) << setfill('0') << memory[k] << "\n";  
 	fout.close();
-	int op1,op2,op3,op4;
-	r[6] = start_location;
-	for(;i < locattr;){
-		i = r[6];
-		op1 = memory[i];
-		op1 = op & 0xFC;
-		switch(op1){
-			case 0: //LDA
-					op2 = memory[i+1];
-					op3 = memory[i+2];
-					r[6] = r[6] + 3;
-					if(op2 & 0x10){
-						op4 = memory[i+1];
-						r[6]++;
-					}
-					if(op2 & )
-					if ((high & 128)) high = ((high & 127) << 8) + X;
-					else high = (high & 127) << 8;
-					loc = memory[PC+1] + high;
-					//cout << "0" << "," << loc << "," << val << endl;
-					val = memory[loc] + (int)(memory[loc+1] << 8) + (int)(memory[loc+2] << 16);
-					ACC = val;
-					//cout << "0" << "," << loc << "," << val << endl;
-					break;
-			case 4: //LDX
-					high = (int)(memory[PC+2]);
-					if ((high & 128)) high = ((high & 127) << 8) + X;
-					else high = (high & 127) << 8;
-					loc = memory[PC+1] + high;
-					val = memory[loc] + (int)(memory[loc+1] << 8) + (int)(memory[loc+2] << 16);
-					X = val;
-					break;
-			case 12: //STA
-					 high = (int)(memory[PC+2]);
-					 if ((high & 128)) high = ((high & 127) << 8) + X;
-					 else high = (high & 127) << 8;
-					 loc = memory[PC+1] + high;
-					 memory[loc] = (ACC & 255);
-					 memory[loc+1] = ((ACC & 65280) >> 8);
-					 memory[loc+2] = (ACC >> 16);
-					 break;
-			case 16: //STX
-					 high = (int)(memory[PC+2]);
-					 if ((high & 128)) high = ((high & 127) << 8) + X;
-					 else high = (high & 127) << 8;
-					 loc = memory[PC+1] + high;
-					 memory[loc] = (X & 255);
-					 memory[loc+1] = ((X & 65280) >> 8);
-					 memory[loc+2] = (X >> 16);
-					 break;
-			case 24: //ADD
-					 high = (int)(memory[PC+2]);
-					 if ((high & 128)) high = ((high & 127) << 8) + X;
-					 else high = (high & 127) << 8;
-					 loc = memory[PC+1] + high;
-					 val = memory[loc] + (int)(memory[loc+1] << 8) + (int)(memory[loc+2] << 16);
-					 ACC += val;
-					 ACC &= 16777215;
-					 break;
-			case 28: //SUB
-					 high = (int)(memory[PC+2]);
-					 if ((high & 128)) high = ((high & 127) << 8) + X;
-					 else high = (high & 127) << 8;
-					 loc = memory[PC+1] + high;
-					 val = memory[loc] + (int)(memory[loc+1] << 8) + (int)(memory[loc+2] << 16);
-					 ACC -= val;
-					 ACC &= 16777215;
-					 break;
-			case 32: //MUL
-					 high = (int)(memory[PC+2]);
-					 if ((high & 128)) high = ((high & 127) << 8) + X;
-					 else high = (high & 127) << 8;
-					 loc = memory[PC+1] + high;
-					 val = memory[loc] + (int)(memory[loc+1] << 8) + (int)(memory[loc+2] << 16);
-					 ACC *= val;
-					 ACC &= 16777215;
-					 break;
-			case 36: high = (int)(memory[PC+2]);
-					 if ((high & 128)) high = ((high & 127) << 8) + X;
-					 else high = (high & 127) << 8;
-					 loc = memory[PC+1] + high;
-					 val = memory[loc] + (int)(memory[loc+1] << 8) + (int)(memory[loc+2] << 16);
-					 ACC /= val;
-					 ACC &= 16777215;
-					 break;
-			
-			case 40: //COMP
-					 loc = memory[PC+1] + (int)(memory[PC+2] << 8);
-					 val = memory[loc] + (int)(memory[loc+1] << 8) + (int)(memory[loc+2] << 16);
-					 if (val == ACC) CC = 0;
-					 else if (ACC > val) CC = 1;
-					 else CC = 2;
-					 break;
-			case 48: //JEQ
-					 if (CC==0)
-					 {
-					 	loc = memory[PC+1] + (int)(memory[PC+2] << 8);
-					 	PC = loc-3;
-					 }
-					 break;
-			case 52: //JGT
-					 if (CC==1)
-					 {
-					 	loc = memory[PC+1] + (int)(memory[PC+2] << 8);
-					 	PC = loc-3;
-					 }
-					 break;
-			case 56: //JLT
-					 if (CC==2)
-					 {
-					 	loc = memory[PC+1] + (int)(memory[PC+2] << 8);
-					 	PC = loc-3;
-					 }
-					 break;
-			case 72: //JSUB
-					 loc = memory[PC+1] + (int)(memory[PC+2] << 8);
-					 L = PC;
-					 PC = loc - 3;
-					 break;
-			case 76: //RSUB
-					 PC = L;
-					 break;
 
-		}	
-	}
-
+	/*
+	TO DO each case copy from Thakur and check calculate Address
+	*/
 	return 0;
- }
+}
