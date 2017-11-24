@@ -59,11 +59,11 @@ pair<int,bool> calculate_address(instruction objectcode){//if it return address 
 	bool negative;
 	if (objectcode.format == 4){
 		disp = objectcode.disp & 0xFFFFF;
-		negative = (objectcode.disp & 0x8FFFF) >> 16;
+		negative = (objectcode.disp & 0x80000) >> 19;
 	}
-	else{
+	else if(objectcode.format == 3){
 		disp = objectcode.disp & 0xFFF;
-		negative = (objectcode.disp & 0x8FF) >> 8;
+		negative = (objectcode.disp & 0x800) >> 11;
 	}
 	effective_address = disp;
 	if(objectcode.format == 3){
@@ -177,17 +177,17 @@ instruction calculate_objectcode(vector<string> vec, int lineno){
 				result.flags = result.flags | 0x34;//1 1 0 1 0 0 base relative addressing 
 			}
 		}
-		else if(vec[i+1].back() == 'X' && symtab.find(vec[i+1].substr(0,vec[1].length()-2)) != symtab.end()){//LDA ARRAY,X
+		else if(vec[i+1].back() == 'X' && symtab.find(vec[i+1].substr(0,vec[i+1].length()-2)) != symtab.end()){//LDA ARRAY,X
 			if(pc_relative) {
-				result.disp = symtab[vec[i+1].substr(0,vec[1].length()-2)] - r[6];
+				result.disp = symtab[vec[i+1].substr(0,vec[i+1].length()-2)] - r[6];
 				result.flags = result.flags | 0x3A;//1 1 1 0 1 0 index addressing pc relative 
 			}
 			else {
-				result.disp = symtab[vec[i+1].substr(0,vec[1].length()-2)] - r[3];
+				result.disp = symtab[vec[i+1].substr(0,vec[i+1].length()-2)] - r[3];
 				result.flags = result.flags | 0x34;//1 1 1 1 0 0 index addrssing base relative
 			}  	
 		}
-		else if(vec[i+1].front() == '@' && symtab.find(vec[1].substr(1)) != symtab.end()){
+		else if(vec[i+1].front() == '@' && symtab.find(vec[i+1].substr(1)) != symtab.end()){
 			if(pc_relative){
 				result.disp = symtab[vec[i+1].substr(0,vec[i+1].length()-2)] - r[6];
 				result.flags = result.flags | 0x22;//1 0 0 0 1 0 pc relative indirect addressing
@@ -203,7 +203,14 @@ instruction calculate_objectcode(vector<string> vec, int lineno){
 		}
 	} 
 	else if(result.format == 2){//ADDR S,A
-			result.disp = (registertab[vec[i+1][0]] << 8) + registertab[vec[i+1][2]];
+			if(vec[i+1].length()==3)
+				result.disp = (registertab[vec[i+1][0]] << 4) + registertab[vec[i+1][2]];
+			else if(vec[i+1].length() == 1 && (vec[i] == "TIXR" || vec[i] == "CLEAR"))
+				result.disp = registertab[vec[i+1][0]];
+			else{
+				cout << "Invalid syntax at line no. " << lineno << endl;
+				exit(0);
+			}
 
 	} 
 	else {
@@ -286,7 +293,7 @@ void opcode_initialize() {
 	optab["TIX"].opcode	= 0x2C;
 	optab["TIX"].format 	= 3;
 	optab["TIXR"].opcode	= 0xB8;
-	optab["TIXR"].format 	= 3;
+	optab["TIXR"].format 	= 2;
 
   	optab["RSUB"].opcode	= 0x4C;
   	optab["RSUB"].format 	= 1;
@@ -303,6 +310,9 @@ void opcode_initialize() {
   	optab["OR"].format	= 2;
   	optab["RMO"].opcode	= 0xAC;
   	optab["RMO"].format	= 2;
+
+  	optab["CLEAR"].opcode = 0xB4;
+  	optab["CLEAR"].format = 2;
 }
 
 int main() {
@@ -513,7 +523,7 @@ int main() {
 		fout  << setw(4) << setfill('0') << k << " " << setw(2) << setfill('0') << memory[k] << "\n";  
 
 	r[6] = start_location;
-	int code, loc, num;
+	int code, loc, num, temp;
 	pair<int,bool> pa;
 	i=0;
 	while(r[6] != inst_end){
@@ -632,15 +642,162 @@ int main() {
 			loc = r[6];
 			r[2] = loc; 
 			objectcode = calculate_instruction(loc);
+			r[2]=r[6];
 			pa = calculate_address(objectcode);
 			r[6] = pa.first;
 			break;
 		case 76: //RSUB
 			r[6] = r[2];
 			break;
-			default:
+		case 0x90://ADDR
+			loc = memory[r[6]+1];
+			r[6] = r[6] +2;
+			r[(loc&0xF)] = r[(loc&0xF)] + r[((loc&0xF0)>>4)];
 			break;
-
+		case 0x5C://SUBR
+			loc = memory[r[6]+1];
+			r[6] = r[6] +2;
+			r[(loc&0xF)] = r[(loc&0xF)] - r[((loc&0xF0)>>4)];
+			break;
+		case 0x98://MULR
+			loc = memory[r[6]+1];
+			r[6] = r[6] +2;
+			r[(loc&0xF)] = r[(loc&0xF)] * r[((loc&0xF0)>>4)];
+			break;
+		case 0xAC://RMO
+			loc = memory[r[6]+1];
+			r[6] = r[6] +2;
+			r[(loc&0xF)] = r[((loc&0xF0)>>4)];
+			break;
+		case 0xA0://COMPR
+			loc = memory[r[6]+1];
+			r[6] = r[6] +2;
+			if(r[(loc&0xF)]<r[((loc&0xF0)>>4)])
+				r[7]=-1;
+			else if(r[(loc&0xF)]>r[((loc&0xF0)>>4)])
+				r[7]=1;
+			else
+				r[7]=0;
+			break;
+		case 0x54://STCH
+			loc = r[6]; 
+			objectcode = calculate_instruction(loc);
+			pa = calculate_address(objectcode);
+			memory[pa.first] = (r[0] & 0xFF);
+			break;
+		case 0x50://LDCH
+			loc = r[6]; 
+			objectcode = calculate_instruction(loc);
+			pa = calculate_address(objectcode);
+			r[0] = memory[pa.first];
+			break;
+		case 0x40://AND
+			loc = r[6]; 
+			objectcode = calculate_instruction(loc);
+			pa = calculate_address(objectcode);
+			if(pa.second)
+				num = (memory[pa.first] << 16) + (memory[pa.first+1] << 8) + memory[pa.first + 2];
+			else
+				num = pa.first; 
+			r[0] = r[0] & num;
+			break;
+		case 0x44://OR
+			loc = r[6]; 
+			objectcode = calculate_instruction(loc);
+			pa = calculate_address(objectcode);
+			if(pa.second)
+				num = (memory[pa.first] << 16) + (memory[pa.first+1] << 8) + memory[pa.first + 2];
+			else
+				num = pa.first;
+			r[0] = r[0] | num;
+			break;
+		case 0xA4://SHIFTL
+			loc = memory[r[6]+1];
+			r[6] = r[6] +2;
+			num = loc & 0xF;
+			temp = (loc&0xF0)>>4;
+			for(i=1;i<=num;i++){
+				r[temp] = ((r[temp] & 0x80) >> 7) + (r[temp] << 1);
+			}
+			break;
+		case 0xA8://SHIFTR
+			loc = memory[r[6]+1];
+			r[6] = r[6] +2;
+			num = loc & 0xF;
+			temp = (loc&0xF0)>>4;
+			for(i=1;i<=num;i++){
+				r[temp] = ((r[temp] & 0x1) << 7) + (r[temp] >> 1);
+			}
+			break;
+		case 0x2C://TIX
+			loc = r[6]; 
+			objectcode = calculate_instruction(loc);
+			pa = calculate_address(objectcode);
+			if(pa.second)
+				num = (memory[pa.first] << 16) + (memory[pa.first+1] << 8) + memory[pa.first + 2];
+			else
+				num = pa.first;
+			r[1]++;
+			if(r[1]<num)
+				r[7]=-1;
+			else if(r[7]>num)
+				r[7]=1;
+			else
+				r[7]=0;
+			break;
+		case 0xB8://TIXR
+			loc = memory[r[6]+1];
+			r[6] = r[6] +2;
+			r[1]++;
+			temp=(loc&0xF);
+			if(r[1]<r[temp])
+				r[7]=-1;
+			else if(r[1]>r[temp])
+				r[7]=1;
+			else
+				r[7]=0;
+			break;
+		case 0xB4://CLEAR
+			loc = memory[r[6]+1];
+			r[6] = r[6] + 2;
+			temp = loc & 0xF;
+			r[temp] = 0;
+			break;
+		case 0x6C://LDS
+			loc = r[6]; 
+			objectcode = calculate_instruction(loc);
+			pa = calculate_address(objectcode);
+			if (pa.second)
+				r[4] = pa.first;
+			else
+				r[4] = (memory[pa.first] << 16) + (memory[pa.first+1] << 8) + memory[pa.first + 2];
+			break;
+		case 0x74://LDT
+			loc = r[6]; 
+			objectcode = calculate_instruction(loc);
+			pa = calculate_address(objectcode);
+			if (pa.second)
+				r[5] = pa.first;
+			else
+				r[5] = (memory[pa.first] << 16) + (memory[pa.first+1] << 8) + memory[pa.first + 2];
+			break;
+		case 0x7C://STS
+			loc = r[6]; 
+			objectcode = calculate_instruction(loc);
+			pa = calculate_address(objectcode);
+			memory[pa.first] = (r[4] & 0xFF0000) >> 16;
+			memory[pa.first+1] = (r[4] & 0xFF00) >> 8;
+			memory[pa.first+2] = (r[4] & 0xFF);
+			break;
+		case 0x84://STT
+			loc = r[6]; 
+			objectcode = calculate_instruction(loc);
+			pa = calculate_address(objectcode);
+			memory[pa.first] = (r[5] & 0xFF0000) >> 16;
+			memory[pa.first+1] = (r[5] & 0xFF00) >> 8;
+			memory[pa.first+2] = (r[5] & 0xFF);
+			break;
+			
 		}
 }
 	fout << "\n";
